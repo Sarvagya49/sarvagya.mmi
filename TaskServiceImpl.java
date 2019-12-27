@@ -5,18 +5,15 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
-import org.apache.taglibs.standard.extra.spath.ParseException;
+import javax.annotation.PostConstruct;
+
 import org.quartz.CronExpression;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import com.sv.bean.Task;
 import com.sv.scheduler.ExecuterServiceProvider;
@@ -34,43 +31,30 @@ public class TaskServiceImpl {
 	@Autowired
 	JARExecuteService jARExecuteService;
 
+	@Autowired
+	TaskConfigLoader taskConfigLoader;
+
 	private Map<String, Task> taskContainerMap = new HashMap<>();
 
 	Date date;
 
 	CronExpression exp;
 
-	TaskServiceImpl() {
-		System.out.println("Adding dummy task.");
-		Task tsk = new Task();
-		
-		tsk.setId(0);
-		tsk.setName("MY DUMMY TASK");
-		tsk.setLocation("C:/Users/CN003073/Desktop/Demo_Child.jar");
-		tsk.setClassName("com.mmi.Child.Child");
-		tsk.setMethodName("run");
-		tsk.setActive(false);
-		tsk.setCron("0/10 0 0 0 0 0");
-		tsk.setScheduledFuture(null);
-		
-		/*tsk.setId(Integer.valueOf(PropertyFileUtility.getValue("Id")));
-		tsk.setName(PropertyFileUtility.getValue("Name"));
-		tsk.setLocation(PropertyFileUtility.getValue("Location"));
-		tsk.setClassName(PropertyFileUtility.getValue("ClassName"));
-		tsk.setMethodName(PropertyFileUtility.getValue("MethodName"));
-		if(PropertyFileUtility.getValue("Active").equalsIgnoreCase("true")) {
-			tsk.setActive(true);
-		}else {
-			tsk.setActive(false);
+	@PostConstruct
+	public void loadTask() {
+		ArrayList<Task> taskList = taskConfigLoader.xMLtoJAXBObject();
+		for (Task task : taskList) {
+			String message = validate(task);
+			if (message == null) {
+				register(task);
+			} else {
+				System.out.println("[TaskServiceImpl.loadTask()] " + message);
+			}
 		}
-		tsk.setCron(PropertyFileUtility.getValue("Cron"));
-		tsk.setScheduledFuture(null);*/
-		
-		taskContainerMap.put(tsk.getName(), tsk);
 	}
 
 	public List<Task> listAll() {
-		List<Task> ls = new ArrayList<Task>();
+		List<Task> ls = new ArrayList<>();
 		taskContainerMap.forEach((key, value) -> {
 			ls.add(value);
 		});
@@ -91,27 +75,14 @@ public class TaskServiceImpl {
 			public void run() {
 				System.out.println("The date is " + new Date());
 				jARExecuteService.executeMethod(task, jARExecuteService.loadClass(task));
-				
-				//to check validity of cron
-//				String a = "*/2 * * * * * 2019";
-//				try {
-//					exp = new CronExpression(a);
-//					date = exp.getNextValidTimeAfter(new Date());
-//					System.out.println(date); // null
-//					exp = new CronExpression("*/2 * * * * * 2019");
-//					date = exp.getNextValidTimeAfter(new Date());
-//					System.out.println(date); // Tue Nov 04 19:20:30 PST 2014
-//				} catch (java.text.ParseException e) {
-//					e.printStackTrace();
-//				}
+
 			}
-		}, new CronTrigger("*/2 * * * * MON-FRI"));
-		/*
-		 * CronTrigger cronTrigger= new CronTrigger(taskName); cronTrigger.
-		 */
+		}, new CronTrigger(task.getCron()));
+
 		task.setScheduledFuture(scheduledFuture);
 		task.setActive(true);
-
+		
+		System.out.println(task);
 		return "Task enabled - " + taskName;
 	}
 
@@ -133,7 +104,9 @@ public class TaskServiceImpl {
 	}
 
 	public void register(Task task) {
+
 		taskContainerMap.put(task.getName(), task);
+
 	}
 
 	public String validate(Task task) {
